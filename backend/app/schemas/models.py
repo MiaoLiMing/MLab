@@ -7,6 +7,13 @@ from pydantic import BaseModel, Field, HttpUrl
 from app.schemas.common import ORMModel
 
 
+class ProviderInfo(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    example_models: list[str]
+
+
 class CredentialCreate(BaseModel):
     provider: str = Field(min_length=1, max_length=50)
     display_name: str = Field(min_length=1, max_length=80)

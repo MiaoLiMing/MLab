@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.provider import OpenAICompatibleProvider, ProviderError, ProviderRequest
+from app.ai.provider import ProviderError, ProviderRequest, create_provider
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.services.chat import resolve_model
@@ -20,7 +20,7 @@ async def complete_text(
     """Run a short non-streaming application action through the shared provider gateway."""
 
     model = await resolve_model(db, settings, user_id, model_config_id)
-    provider = OpenAICompatibleProvider(model.base_url, model.api_key, timeout=90)
+    provider = create_provider(model.provider, model.base_url, model.api_key, timeout=90)
     parts: list[str] = []
     try:
         async for event in provider.stream_chat(

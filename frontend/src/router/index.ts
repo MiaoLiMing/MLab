@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/documents', component: () => import('@/views/DocumentsView.vue') },
     { path: '/assistants', component: () => import('@/views/AssistantsView.vue') },
     { path: '/assistants/new', component: () => import('@/views/AssistantEditorView.vue') },
+    { path: '/assistants/:id/edit', component: () => import('@/views/AssistantEditorView.vue') },
     { path: '/tools', component: () => import('@/views/ToolsView.vue') },
     { path: '/resources', component: () => import('@/views/ResourcesView.vue') },
     { path: '/search', component: () => import('@/views/SearchView.vue') },

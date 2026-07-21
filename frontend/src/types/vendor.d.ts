@@ -3,6 +3,7 @@ declare module 'markdown-it' {
     html?: boolean
     linkify?: boolean
     breaks?: boolean
+    highlight?: (source: string, language: string) => string
   }
 
   export default class MarkdownIt {

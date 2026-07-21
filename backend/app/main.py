@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 from sqlalchemy import text
 
 from app.api.v1 import (
@@ -26,6 +27,7 @@ from app.api.v1 import (
 )
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.rate_limit import rate_limiter
 from app.db.seed import seed_system_data
 from app.db.session import SessionFactory, create_database_tables
 
@@ -39,11 +41,17 @@ logger = logging.getLogger("mlab")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await create_database_tables()
+    if not settings.is_production:
+        await create_database_tables()
     settings.local_storage_path.mkdir(parents=True, exist_ok=True)
     async with SessionFactory() as db:
         await seed_system_data(db)
-    yield
+    if settings.is_production:
+        rate_limiter.enable_redis(settings.redis_url)
+    try:
+        yield
+    finally:
+        await rate_limiter.close()
 
 
 app = FastAPI(
@@ -65,6 +73,27 @@ app.add_middleware(
 async def request_context(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid4())
     request.state.request_id = request_id
+    path = request.url.path
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    client = forwarded_for or (request.client.host if request.client else "unknown")
+    limit = 10 if path in {"/api/v1/auth/login", "/api/v1/auth/register"} else 0
+    if path.endswith("/messages"):
+        limit = 30
+    elif path == "/api/v1/files":
+        limit = 20
+    if limit and not await rate_limiter.allow(f"{client}:{request.method}:{path}", limit):
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": "60", "x-request-id": request_id},
+            content={
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": "请求过于频繁，请稍后重试",
+                    "request_id": request_id,
+                    "details": None,
+                }
+            },
+        )
     response = await call_next(request)
     response.headers["x-request-id"] = request_id
     return response
@@ -125,6 +154,12 @@ async def live() -> dict[str, str]:
 async def ready() -> dict[str, str]:
     async with SessionFactory() as db:
         await db.execute(text("SELECT 1"))
+    if settings.is_production:
+        redis = Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
+        try:
+            await redis.ping()
+        finally:
+            await redis.aclose()
     return {"status": "ready"}
 
 

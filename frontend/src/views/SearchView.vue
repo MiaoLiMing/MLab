@@ -10,7 +10,7 @@ const query = ref('')
 const results = ref<SearchResult[]>([])
 const loading = ref(false)
 let timer: number | undefined
-const typeLabels: Record<SearchResult['result_type'], string> = {
+const typeLabels: Record<string, string> = {
   conversation: '对话',
   task: '任务',
   document: '文稿',
@@ -53,7 +53,7 @@ function iconFor(type: SearchResult['result_type']) {
     <PageHeader title="搜索" subtitle="查找你的对话、任务、文稿和资源" />
     <label class="global-search"><Search :size="21" /><input v-model="query" autofocus placeholder="输入关键词…" /><span v-if="loading">搜索中…</span></label>
     <div v-if="grouped.length" class="search-results">
-      <section v-for="group in grouped" :key="group[0]"><h2>{{ typeLabels[group[0] as SearchResult['result_type']] }}</h2><RouterLink v-for="item in group[1]" :key="item.id" :to="item.path"><component :is="iconFor(item.result_type)" :size="18" /><div><strong>{{ item.title }}</strong><p>{{ item.snippet || typeLabels[item.result_type] }}</p></div></RouterLink></section>
+      <section v-for="group in grouped" :key="group[0]"><h2>{{ typeLabels[group[0]] }}</h2><RouterLink v-for="item in group[1]" :key="item.id" :to="item.path"><component :is="iconFor(item.result_type)" :size="18" /><div><strong>{{ item.title }}</strong><p>{{ item.snippet || typeLabels[item.result_type] }}</p></div></RouterLink></section>
     </div>
     <div v-else-if="query && !loading" class="empty-state"><Search :size="28" /><h2>没有找到相关内容</h2><p>尝试使用更短或不同的关键词。</p></div>
   </div>

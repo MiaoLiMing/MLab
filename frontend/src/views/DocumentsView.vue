@@ -2,7 +2,7 @@
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
-import { Bold, FilePlus2, History, Italic, List, Save, Sparkles, Trash2 } from 'lucide-vue-next'
+import { Bold, FilePlus2, History, Italic, List, Save, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { api } from '@/api/client'
@@ -39,13 +39,25 @@ async function create() {
 }
 function scheduleSave(contentJson: Record<string, unknown>, contentText: string) {
   window.clearTimeout(saveTimer)
-  saveTimer = window.setTimeout(() => save(contentJson, contentText), 700)
+  saveTimer = window.setTimeout(() => save(false, contentJson, contentText), 700)
 }
-async function save(contentJson = editor.value?.getJSON() || {}, contentText = editor.value?.getText() || '') {
+async function save(
+  createVersion = false,
+  contentJson = editor.value?.getJSON() || {},
+  contentText = editor.value?.getText() || '',
+) {
   if (!selected.value) return
   saving.value = true
   try {
-    const updated = await api<DocumentItem>(`/documents/${selected.value.id}`, { method: 'PATCH', body: JSON.stringify({ title: selected.value.title, content_json: contentJson, content_text: contentText }) })
+    const updated = await api<DocumentItem>(`/documents/${selected.value.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        title: selected.value.title,
+        content_json: contentJson,
+        content_text: contentText,
+        create_version: createVersion,
+      }),
+    })
     Object.assign(selected.value, updated)
   } finally { saving.value = false }
 }
@@ -95,13 +107,13 @@ async function restoreVersion(version: number) {
       <aside class="document-list"><button v-for="item in documents" :key="item.id" :class="{ active: selected?.id === item.id }" @click="selected = item"><strong>{{ item.title }}</strong><span>版本 {{ item.current_version }}</span></button><div v-if="!documents.length" class="mini-empty">还没有文稿</div></aside>
       <section v-if="selected" class="editor-panel">
         <header class="editor-header"><input v-model="selected.title" maxlength="200" @change="save()" /><span>{{ saving ? '保存中…' : '已自动保存' }}</span><button class="icon-button" title="删除文稿" @click="remove"><Trash2 :size="17" /></button></header>
-        <div class="editor-toolbar"><button title="粗体" :class="{ active: editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()"><Bold :size="17" /></button><button title="斜体" :class="{ active: editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()"><Italic :size="17" /></button><button title="项目符号" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()"><List :size="17" /></button><span /><button :disabled="aiWorking" @click="aiAction('rewrite')"><Sparkles :size="15" />改写</button><button :disabled="aiWorking" @click="aiAction('continue')">续写</button><button :disabled="aiWorking" @click="aiAction('summarize')">总结</button><button title="版本历史" @click="openVersions"><History :size="16" /></button><button title="立即保存" @click="save()"><Save :size="16" /></button></div>
+        <div class="editor-toolbar"><button title="粗体" :class="{ active: editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()"><Bold :size="17" /></button><button title="斜体" :class="{ active: editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()"><Italic :size="17" /></button><button title="项目符号" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()"><List :size="17" /></button><span /><button :disabled="aiWorking" @click="aiAction('rewrite')"><Sparkles :size="15" />改写</button><button :disabled="aiWorking" @click="aiAction('continue')">续写</button><button :disabled="aiWorking" @click="aiAction('summarize')">总结</button><button title="版本历史" @click="openVersions"><History :size="16" /></button><button title="创建版本并保存" @click="save(true)"><Save :size="16" /></button></div>
         <EditorContent :editor="editor" class="document-editor" />
       </section>
       <div v-else class="empty-state editor-empty"><FilePlus2 :size="30" /><h2>创建第一篇文稿</h2><p>内容会自动保存并保留版本。</p></div>
     </div>
     <div v-if="showVersions" class="modal-backdrop" @click.self="showVersions = false">
-      <section class="modal-panel"><header><div><h2>版本历史</h2><p>恢复操作会创建一个新版本，不会覆盖历史。</p></div><button class="icon-button" title="关闭" @click="showVersions = false">×</button></header><div class="version-list"><button v-for="item in versions" :key="item.id" @click="restoreVersion(item.version)"><strong>版本 {{ item.version }}</strong><span>{{ new Date(item.created_at).toLocaleString() }}</span></button></div></section>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="version-dialog-title"><header><div><h2 id="version-dialog-title">版本历史</h2><p>恢复操作会创建一个新版本，不会覆盖历史。</p></div><button class="icon-button" title="关闭" @click="showVersions = false"><X :size="18" /></button></header><div class="version-list"><button v-for="item in versions" :key="item.id" @click="restoreVersion(item.version)"><strong>版本 {{ item.version }}</strong><span>{{ new Date(item.created_at).toLocaleString() }}</span></button></div></section>
     </div>
   </div>
 </template>

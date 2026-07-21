@@ -1,4 +1,6 @@
+import ipaddress
 from time import perf_counter
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -18,9 +20,65 @@ from app.schemas.models import (
     ModelConfigCreate,
     ModelConfigResponse,
     ModelConfigUpdate,
+    ProviderInfo,
 )
 
 router = APIRouter(tags=["model-settings"])
+
+PROVIDERS = [
+    ProviderInfo(
+        id="openai",
+        name="OpenAI",
+        base_url="https://api.openai.com/v1",
+        example_models=["gpt-4.1-mini", "gpt-4.1"],
+    ),
+    ProviderInfo(
+        id="deepseek",
+        name="DeepSeek",
+        base_url="https://api.deepseek.com/v1",
+        example_models=["deepseek-chat", "deepseek-reasoner"],
+    ),
+    ProviderInfo(
+        id="qwen",
+        name="通义千问",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        example_models=["qwen-plus", "qwen-max"],
+    ),
+    ProviderInfo(
+        id="moonshot",
+        name="Moonshot",
+        base_url="https://api.moonshot.cn/v1",
+        example_models=["moonshot-v1-8k"],
+    ),
+    ProviderInfo(
+        id="zhipu",
+        name="智谱 AI",
+        base_url="https://open.bigmodel.cn/api/paas/v4",
+        example_models=["glm-4-flash", "glm-4-plus"],
+    ),
+]
+
+
+@router.get("/providers", response_model=list[ProviderInfo])
+async def list_providers(_user: CurrentUser) -> list[ProviderInfo]:
+    return PROVIDERS
+
+
+def validate_provider_url(value: str) -> str:
+    url = value.rstrip("/")
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not hostname:
+        raise AppError("INVALID_PROVIDER_URL", "模型地址必须是有效的 HTTPS URL", 422)
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise AppError("INVALID_PROVIDER_URL", "模型地址不能指向本机", 422)
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return url
+    if not address.is_global:
+        raise AppError("INVALID_PROVIDER_URL", "模型地址不能指向私网或保留地址", 422)
+    return url
 
 
 @router.get("/provider-credentials", response_model=list[CredentialResponse])
@@ -51,7 +109,7 @@ async def save_credential(
         credential = ProviderCredential(user_id=user.id, provider=payload.provider)
         db.add(credential)
     credential.display_name = payload.display_name
-    credential.base_url = str(payload.base_url).rstrip("/")
+    credential.base_url = validate_provider_url(str(payload.base_url))
     credential.encrypted_api_key = encrypt_secret(payload.api_key, settings)
     credential.key_hint = mask_secret(payload.api_key)
     credential.is_active = True
@@ -77,9 +135,11 @@ async def delete_credential(
 
 
 @router.post("/provider-credentials/test", response_model=CredentialTestResponse)
-async def test_credential(payload: CredentialTestRequest) -> CredentialTestResponse:
+async def test_credential(
+    payload: CredentialTestRequest, _user: CurrentUser
+) -> CredentialTestResponse:
     started = perf_counter()
-    url = f"{str(payload.base_url).rstrip('/')}/models"
+    url = f"{validate_provider_url(str(payload.base_url))}/models"
     try:
         async with httpx.AsyncClient(timeout=12) as client:
             response = await client.get(url, headers={"Authorization": f"Bearer {payload.api_key}"})

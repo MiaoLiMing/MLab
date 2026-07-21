@@ -21,7 +21,11 @@ async def test_tasks_documents_resources_and_memories(
     updated = await client.patch(
         f"/api/v1/documents/{document.json()['id']}",
         headers=auth_headers,
-        json={"content_text": "第二版", "content_json": {"type": "doc"}},
+        json={
+            "content_text": "第二版",
+            "content_json": {"type": "doc"},
+            "create_version": True,
+        },
     )
     assert updated.json()["current_version"] == 2
 

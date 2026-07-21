@@ -3,19 +3,27 @@ import { ChevronLeft, MoreHorizontal } from 'lucide-vue-next'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import { api } from '@/api/client'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import { useChatStore } from '@/stores/chat'
 import { useToastStore } from '@/stores/toast'
-import type { ChatMessage } from '@/types/api'
+import type { Assistant, ChatMessage } from '@/types/api'
 
 const route = useRoute()
 const chat = useChatStore()
 const toast = useToastStore()
 const scrollArea = ref<HTMLElement | null>(null)
+const openingMessage = ref('')
 
 async function load(id: string) {
   await chat.loadConversation(id)
+  openingMessage.value = ''
+  if (chat.current?.assistant_id) {
+    openingMessage.value = (
+      await api<Assistant>(`/assistants/${chat.current.assistant_id}`).catch(() => null)
+    )?.opening_message || ''
+  }
   const prompt = typeof route.query.prompt === 'string' ? route.query.prompt : ''
   const attachmentIds =
     typeof route.query.attachments === 'string'
@@ -28,9 +36,14 @@ onMounted(() => load(String(route.params.id)).catch(handleError))
 watch(() => route.params.id, (id) => load(String(id)).catch(handleError))
 watch(() => chat.current?.messages.map((item) => item.content.length), scrollToBottom, { deep: true })
 
-async function send(content: string, modelId?: string, attachmentIds: string[] = []) {
+async function send(
+  content: string,
+  modelId?: string,
+  attachmentIds: string[] = [],
+  sourceMessageId?: string,
+) {
   try {
-    await chat.send(content, modelId, attachmentIds)
+    await chat.send(content, modelId, attachmentIds, sourceMessageId)
   } catch (error) {
     handleError(error)
   }
@@ -44,7 +57,11 @@ async function retry(message: ChatMessage) {
   const messages = chat.current?.messages || []
   const index = messages.findIndex((item) => item.id === message.id)
   const userMessage = [...messages.slice(0, index)].reverse().find((item) => item.role === 'user')
-  if (userMessage) await send(userMessage.content)
+  if (userMessage) await send(userMessage.content, undefined, [], userMessage.id)
+}
+
+async function edit(message: ChatMessage, content: string) {
+  await send(content, undefined, [], message.id)
 }
 
 async function scrollToBottom() {
@@ -61,9 +78,9 @@ async function scrollToBottom() {
       <button class="icon-button" title="更多操作"><MoreHorizontal :size="20" /></button>
     </header>
     <div ref="scrollArea" class="chat-scroll">
-      <div v-if="!chat.current?.messages.length" class="empty-state"><span>AI</span><h2>开始这段对话</h2><p>说出你的目标，我会和你一起梳理并完成它。</p></div>
+      <div v-if="!chat.current?.messages.length" class="empty-state"><span>AI</span><h2>开始这段对话</h2><p>{{ openingMessage || '说出你的目标，我会和你一起梳理并完成它。' }}</p></div>
       <div class="message-list">
-        <MessageBubble v-for="message in chat.current?.messages" :key="message.id" :message="message" @retry="retry" />
+        <MessageBubble v-for="message in chat.current?.messages" :key="message.id" :message="message" @retry="retry" @edit="edit" />
       </div>
     </div>
     <div class="chat-composer-wrap"><ChatComposer :loading="chat.streaming" @send="send" @stop="chat.stop" /><small>AI 可能会犯错，请核查重要信息。</small></div>

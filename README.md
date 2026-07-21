@@ -4,17 +4,25 @@ MLab 是一个 Vue 3 + FastAPI 构建的 AI 工作空间，包含真实流式对
 
 ## 功能
 
-- OpenAI-compatible 模型接入，支持自定义 Base URL、API Key 和模型名称。
-- POST SSE 真实流式消息，支持停止、失败状态、历史持久化和 Token 用量。
+- OpenAI-compatible 模型接入，支持自定义 Base URL、API Key、模型名称和函数调用。
+- POST SSE 真实流式消息，支持停止、编辑重发、重新生成、代码高亮、失败状态、历史持久化和 Token 用量。
 - 用户注册登录、Refresh Token 轮换、账户数据隔离。
 - API Key 服务端加密保存，接口只返回掩码。
-- 助手创建、市场安装；工具搜索、分类、收藏和外链导航。
-- 任务模板、文稿自动保存与版本、资源、可控长期记忆。
+- 助手创建/编辑/删除、市场安装、开场白、模型参数与知识文件；工具搜索、分类、收藏、内置执行和外链导航。
+- 任务模板、AI 拆解、文稿自动保存与版本、资源、可控向量长期记忆。
 - 浅色/深色/系统主题，适配桌面、平板和移动端。
 
 ## 最快启动
 
 需要 Docker Desktop 和 Docker Compose 2。
+
+```powershell
+Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+把两条命令的输出分别写入 `.env` 的 `APP_SECRET_KEY` 和 `CREDENTIAL_ENCRYPTION_KEY`，然后启动：
 
 ```powershell
 docker compose up --build
@@ -27,6 +35,17 @@ docker compose up --build
 3. 填写 API Key 和模型名，如 `deepseek-chat`。
 4. 点击“验证并保存”，随后返回首页开始对话。
 
+### 无 Key 验收模式
+
+如果暂时没有模型 API Key，可先使用服务端 Mock Provider 验证完整业务链路。它会返回确定性的流式回复，并覆盖内置计算器、任务拆解和文稿 AI 操作：
+
+```dotenv
+APP_ENV=development
+MOCK_AI_ENABLED=true
+```
+
+使用 Mock 模式时不需要填写 API Key；该模式仅允许在开发环境启用，生产环境会拒绝启动。验收完成后将其改为 `false`，再在设置页保存真实的 OpenAI-compatible 凭据。
+
 也可以在根目录创建 `.env`，以系统默认凭据运行：
 
 ```dotenv
@@ -35,6 +54,7 @@ CREDENTIAL_ENCRYPTION_KEY=replace-with-a-valid-fernet-key
 AI_BASE_URL=https://api.deepseek.com/v1
 AI_API_KEY=your-api-key
 DEFAULT_AI_MODEL=deepseek-chat
+MOCK_AI_ENABLED=false
 ```
 
 生产环境必须修改 `APP_SECRET_KEY` 和 `CREDENTIAL_ENCRYPTION_KEY`。
@@ -52,7 +72,7 @@ python -m pip install -e ".\backend[dev]"
 python -m uvicorn app.main:app --app-dir backend --reload
 ```
 
-未配置 `DATABASE_URL` 时使用当前启动目录下的 `data/mlab.db`。API 文档位于 <http://localhost:8000/docs>。
+未配置 `DATABASE_URL` 时使用当前启动目录下的 `data/mlab.db`，上传文件写入 `data/uploads`。API 文档位于 <http://localhost:8000/docs>。
 
 ### 前端
 

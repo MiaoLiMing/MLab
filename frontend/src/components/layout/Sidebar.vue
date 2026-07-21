@@ -15,11 +15,13 @@ import {
   Wrench,
   X,
 } from 'lucide-vue-next'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
+import type { Assistant } from '@/types/api'
 
 const props = defineProps<{ mobileOpen: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -27,10 +29,18 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const chat = useChatStore()
+const installedAssistants = ref<Assistant[]>([])
 
 const initials = computed(() => auth.user?.display_name?.slice(0, 1).toUpperCase() || 'M')
 
-onMounted(() => chat.loadConversations().catch(() => undefined))
+onMounted(async () => {
+  await Promise.all([
+    chat.loadConversations().catch(() => undefined),
+    api<Assistant[]>('/assistants/installed')
+      .then((items) => (installedAssistants.value = items))
+      .catch(() => undefined),
+  ])
+})
 
 function active(path: string) {
   return path === '/' ? route.path === '/' || route.path.startsWith('/chat') : route.path.startsWith(path)
@@ -40,13 +50,19 @@ async function signOut() {
   await auth.logout()
   await router.push('/login')
 }
+
+async function startAssistant(assistantId: string) {
+  const conversation = await chat.createConversation(assistantId)
+  emit('close')
+  await router.push(`/chat/${conversation.id}`)
+}
 </script>
 
 <template>
   <div v-if="props.mobileOpen" class="sidebar-backdrop" @click="emit('close')" />
   <aside class="sidebar" :class="{ 'sidebar--open': props.mobileOpen }">
     <div class="sidebar-profile">
-      <div class="avatar">{{ initials }}</div>
+      <div class="avatar"><img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="" /> <template v-else>{{ initials }}</template></div>
       <div class="sidebar-profile__text">
         <strong>{{ auth.user?.display_name || 'MLab 用户' }}</strong>
         <span>{{ auth.user?.email }}</span>
@@ -56,7 +72,7 @@ async function signOut() {
     </div>
 
     <button class="sidebar-search" @click="router.push('/search')">
-      <Search :size="16" /><span>搜索</span><kbd>⌘ K</kbd>
+      <Search :size="16" /><span>搜索</span>
     </button>
 
     <nav class="sidebar-nav" aria-label="主导航">
@@ -80,7 +96,8 @@ async function signOut() {
 
     <div class="sidebar-section">
       <div class="sidebar-section__title"><span>助手</span><Menu :size="14" /></div>
-      <RouterLink to="/assistants" class="sidebar-item sidebar-assistant"><Bot :size="18" />助手市场</RouterLink>
+      <button v-for="item in installedAssistants.slice(0, 4)" :key="item.id" class="sidebar-item sidebar-assistant" @click="startAssistant(item.id)"><span class="sidebar-assistant__avatar">{{ item.avatar }}</span><span class="truncate">{{ item.name }}</span></button>
+      <RouterLink to="/assistants" class="sidebar-item"><Bot :size="18" />助手市场</RouterLink>
       <RouterLink to="/assistants/new" class="sidebar-item"><MessageSquarePlus :size="17" />创建助手</RouterLink>
     </div>
 

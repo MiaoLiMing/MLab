@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: mlab
       POSTGRES_USER: mlab
@@ -30,8 +30,8 @@ services:
       target: runtime
     environment:
       APP_ENV: ${APP_ENV:-production}
-      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this-before-public-deployment}
-      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY is required}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       DATABASE_URL: postgresql+asyncpg://mlab:mlab@postgres:5432/mlab
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
@@ -39,6 +39,7 @@ services:
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-deepseek-chat}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
       AI_API_KEY: ${AI_API_KEY:-}
+      MOCK_AI_ENABLED: ${MOCK_AI_ENABLED:-false}
       LOCAL_STORAGE_PATH: /data/uploads
     volumes:
       - uploads_data:/data/uploads
@@ -71,10 +72,11 @@ services:
     command: arq app.worker.WorkerSettings
     environment:
       APP_ENV: ${APP_ENV:-production}
-      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this-before-public-deployment}
-      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY is required}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?CREDENTIAL_ENCRYPTION_KEY is required}
       DATABASE_URL: postgresql+asyncpg://mlab:mlab@postgres:5432/mlab
       REDIS_URL: redis://redis:6379/0
+      MOCK_AI_ENABLED: ${MOCK_AI_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

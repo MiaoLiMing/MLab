@@ -23,6 +23,15 @@ ALLOWED_MIME_TYPES = {
     "image/png",
     "image/webp",
 }
+ALLOWED_EXTENSIONS = {
+    "text/plain": {".txt"},
+    "text/markdown": {".md", ".markdown"},
+    "application/pdf": {".pdf"},
+    "application/json": {".json"},
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/webp": {".webp"},
+}
 
 
 @router.get("", response_model=list[FileResponse])
@@ -46,10 +55,12 @@ async def upload_file(
     content_type = upload.content_type or "application/octet-stream"
     if content_type not in ALLOWED_MIME_TYPES:
         raise AppError("UNSUPPORTED_FILE_TYPE", "不支持该文件类型", 415)
+    extension = Path(upload.filename or "file").suffix.lower()[:10]
+    if extension not in ALLOWED_EXTENSIONS[content_type]:
+        raise AppError("FILE_TYPE_MISMATCH", "文件扩展名与内容类型不一致", 415)
     max_size = settings.max_upload_size_mb * 1024 * 1024
     digest = hashlib.sha256()
     size = 0
-    extension = Path(upload.filename or "file").suffix.lower()[:10]
     storage_key = f"{user.id}/{uuid4().hex}{extension}"
     target = settings.local_storage_path / storage_key
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -20,6 +20,14 @@ export interface TokenResponse {
   user: User
 }
 
+export interface UsageSummary {
+  conversations: number
+  tasks: number
+  documents: number
+  input_tokens: number
+  output_tokens: number
+}
+
 export interface ModelConfig {
   id: string
   credential_id: string | null
@@ -39,6 +47,13 @@ export interface Credential {
   is_active: boolean
 }
 
+export interface ProviderInfo {
+  id: string
+  name: string
+  base_url: string
+  example_models: string[]
+}
+
 export interface Assistant {
   id: string
   owner_id: string | null
@@ -47,12 +62,20 @@ export interface Assistant {
   description: string
   avatar: string
   system_prompt: string
+  opening_message: string
   category: string
   visibility: string
-  model_config: Record<string, unknown>
+  model_config: AssistantModelSettings
   usage_count: number
   is_featured: boolean
   installed: boolean
+  knowledge_file_ids: string[]
+}
+
+export interface AssistantModelSettings {
+  model_config_id: string | null
+  temperature: number
+  max_tokens: number | null
 }
 
 export interface Conversation {
@@ -79,12 +102,14 @@ export interface ChatMessage {
   created_at: string
   updated_at: string
   attachments: MessageAttachment[]
+  tool_status?: string
 }
 
 export interface MessageAttachment {
   id: string
   file_id: string
   attachment_type: string
+  attachment_metadata: Record<string, unknown>
 }
 
 export interface FileAsset {

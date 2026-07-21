@@ -2,7 +2,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from cryptography.fernet import Fernet
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -27,9 +28,10 @@ class Settings(BaseSettings):
     default_ai_model: str = "deepseek-chat"
     ai_api_key: str | None = None
     ai_base_url: str = "https://api.deepseek.com/v1"
+    mock_ai_enabled: bool = False
 
     storage_backend: str = "local"
-    local_storage_path: Path = Path("backend/uploads")
+    local_storage_path: Path = Path("data/uploads")
     jwt_access_expire_minutes: int = 30
     jwt_refresh_expire_days: int = 30
     max_upload_size_mb: int = 20
@@ -40,6 +42,22 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if not self.is_production:
+            return self
+        if self.mock_ai_enabled:
+            raise ValueError("MOCK_AI_ENABLED cannot be enabled in production")
+        if len(self.app_secret_key) < 32 or self.app_secret_key.startswith("change-"):
+            raise ValueError("APP_SECRET_KEY must be a random value of at least 32 characters")
+        if not self.credential_encryption_key:
+            raise ValueError("CREDENTIAL_ENCRYPTION_KEY is required in production")
+        try:
+            Fernet(self.credential_encryption_key.encode("ascii"))
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise ValueError("CREDENTIAL_ENCRYPTION_KEY must be a valid Fernet key") from exc
+        return self
 
     @property
     def is_production(self) -> bool:

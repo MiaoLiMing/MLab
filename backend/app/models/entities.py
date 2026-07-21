@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -13,7 +14,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -113,6 +113,7 @@ class Assistant(Base, UUIDMixin, TimestampMixin):
     description: Mapped[str] = mapped_column(String(500), default="")
     avatar: Mapped[str] = mapped_column(String(32), default="AI")
     system_prompt: Mapped[str] = mapped_column(Text, default="")
+    opening_message: Mapped[str] = mapped_column(Text, default="")
     category: Mapped[str] = mapped_column(String(50), default="general")
     visibility: Mapped[str] = mapped_column(String(20), default=Visibility.PRIVATE)
     model_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -133,6 +134,19 @@ class AssistantInstallation(Base, UUIDMixin):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     assistant: Mapped[Assistant] = relationship()
+
+
+class AssistantFile(Base, UUIDMixin):
+    __tablename__ = "assistant_files"
+    __table_args__ = (UniqueConstraint("assistant_id", "file_id"),)
+
+    assistant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("assistants.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class Conversation(Base, UUIDMixin, TimestampMixin):
@@ -320,7 +334,9 @@ class Memory(Base, UUIDMixin, TimestampMixin):
     )
     content: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(30), default="preference")
-    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(256).with_variant(JSON(), "sqlite"), nullable=True
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

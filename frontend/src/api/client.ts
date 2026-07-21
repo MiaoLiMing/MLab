@@ -30,19 +30,28 @@ async function refreshAccessToken(): Promise<boolean> {
   return true
 }
 
-export async function api<T>(
+export async function authenticatedFetch(
   path: string,
   init: RequestInit = {},
   retry = true,
-): Promise<T> {
+): Promise<Response> {
   const token = localStorage.getItem('mlab_access_token')
   const headers = new Headers(init.headers)
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (response.status === 401 && retry && (await refreshAccessToken())) {
-    return api<T>(path, init, false)
+    return authenticatedFetch(path, init, false)
   }
+  return response
+}
+
+export async function api<T>(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<T> {
+  const response = await authenticatedFetch(path, init, retry)
   if (!response.ok) {
     let body: ApiErrorBody | null = null
     try {
@@ -56,12 +65,4 @@ export async function api<T>(
   return (await response.json()) as T
 }
 
-export function authHeaders(): Headers {
-  const headers = new Headers({ 'Content-Type': 'application/json' })
-  const token = localStorage.getItem('mlab_access_token')
-  if (token) headers.set('Authorization', `Bearer ${token}`)
-  return headers
-}
-
 export { API_BASE }
-

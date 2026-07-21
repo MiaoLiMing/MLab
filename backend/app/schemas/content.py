@@ -7,17 +7,25 @@ from pydantic import AliasChoices, BaseModel, Field
 from app.schemas.common import ORMModel
 
 
+class AssistantModelConfig(BaseModel):
+    model_config_id: UUID | None = None
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=100_000)
+
+
 class AssistantCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=500)
     avatar: str = Field(default="AI", max_length=32)
     system_prompt: str = Field(default="", max_length=20_000)
+    opening_message: str = Field(default="", max_length=2_000)
     category: str = Field(default="general", max_length=50)
-    assistant_config: dict[str, Any] = Field(
-        default_factory=dict,
+    assistant_config: AssistantModelConfig = Field(
+        default_factory=AssistantModelConfig,
         validation_alias=AliasChoices("assistant_config", "model_config"),
         serialization_alias="model_config",
     )
+    knowledge_file_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
 class AssistantUpdate(BaseModel):
@@ -25,12 +33,14 @@ class AssistantUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     avatar: str | None = Field(default=None, max_length=32)
     system_prompt: str | None = Field(default=None, max_length=20_000)
+    opening_message: str | None = Field(default=None, max_length=2_000)
     category: str | None = Field(default=None, max_length=50)
-    assistant_config: dict[str, Any] | None = Field(
+    assistant_config: AssistantModelConfig | None = Field(
         default=None,
         validation_alias=AliasChoices("assistant_config", "model_config"),
         serialization_alias="model_config",
     )
+    knowledge_file_ids: list[UUID] | None = Field(default=None, max_length=20)
 
 
 class AssistantResponse(ORMModel):
@@ -41,15 +51,17 @@ class AssistantResponse(ORMModel):
     description: str
     avatar: str
     system_prompt: str
+    opening_message: str
     category: str
     visibility: str
-    assistant_config: dict[str, Any] = Field(
+    assistant_config: AssistantModelConfig = Field(
         validation_alias=AliasChoices("assistant_config", "model_config"),
         serialization_alias="model_config",
     )
     usage_count: int
     is_featured: bool
     installed: bool = False
+    knowledge_file_ids: list[UUID] = Field(default_factory=list)
 
 
 class ConversationCreate(BaseModel):
@@ -67,6 +79,7 @@ class MessageAttachmentResponse(ORMModel):
     id: UUID
     file_id: UUID
     attachment_type: str
+    attachment_metadata: dict[str, Any]
 
 
 class MessageResponse(ORMModel):
@@ -103,6 +116,7 @@ class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     model_config_id: UUID | None = None
     attachment_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    source_message_id: UUID | None = None
 
 
 class ToolResponse(ORMModel):
@@ -186,6 +200,7 @@ class DocumentUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content_json: dict[str, Any] | None = None
     content_text: str | None = None
+    create_version: bool = False
 
 
 class DocumentResponse(ORMModel):

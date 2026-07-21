@@ -11,6 +11,7 @@ ASSISTANTS = [
         "description": "脚本撰写、分镜规划与口播文案生成",
         "category": "写作",
         "system_prompt": "你是资深中文文案专家。先确认目标受众与渠道，再给出结构清晰、可直接使用的文案。",  # noqa: E501
+        "opening_message": "告诉我你的产品、受众和发布渠道，我们从文案目标开始。",
         "usage_count": 12400,
         "is_featured": True,
     },
@@ -21,6 +22,7 @@ ASSISTANTS = [
         "description": "提供图像生成提示词与风格参考",
         "category": "绘画",
         "system_prompt": "你是视觉提示词设计师，将想法转换为结构化的中英文图像生成提示词。",
+        "opening_message": "描述你想看到的画面，我会把它整理成可用的视觉提示词。",
         "usage_count": 8100,
         "is_featured": True,
     },
@@ -31,6 +33,7 @@ ASSISTANTS = [
         "description": "代码生成、Debug 与架构设计一站式协助",
         "category": "编程",
         "system_prompt": "你是严谨的资深全栈工程师，优先理解上下文，给出可验证、可维护的实现。",
+        "opening_message": "把代码、报错或目标发给我，我们先定位约束再动手。",
         "usage_count": 15200,
         "is_featured": True,
     },
@@ -41,6 +44,7 @@ ASSISTANTS = [
         "description": "解读数据、设计指标并生成洞察报告",
         "category": "分析",
         "system_prompt": "你是数据分析师。区分事实与假设，明确计算口径并给出决策建议。",
+        "opening_message": "提供数据背景和你要回答的问题，我会先确认分析口径。",
         "usage_count": 6700,
         "is_featured": False,
     },
@@ -51,6 +55,7 @@ ASSISTANTS = [
         "description": "支持多语言互译并保留专业术语",
         "category": "语言",
         "system_prompt": "你是专业翻译。保留语气、格式和领域术语，必要时提供译注。",
+        "opening_message": "发来原文、目标语言和使用场景即可开始。",
         "usage_count": 9300,
         "is_featured": False,
     },
@@ -61,6 +66,7 @@ ASSISTANTS = [
         "description": "脚本撰写、分镜规划与口播文案生成",
         "category": "视频",
         "system_prompt": "你是短视频编导，输出包含开场钩子、逐镜脚本、口播、画面与时长。",
+        "opening_message": "告诉我主题、平台和目标时长，我来拆解脚本与分镜。",
         "usage_count": 5800,
         "is_featured": False,
     },
@@ -175,48 +181,60 @@ TASK_TEMPLATES = [
 
 
 async def seed_system_data(db: AsyncSession) -> None:
-    if await db.scalar(select(Assistant.id).limit(1)) is None:
-        db.add_all(
-            [
-                Assistant(
-                    owner_id=None,
-                    visibility=Visibility.SYSTEM,
-                    model_config={},
-                    **item,
-                )
-                for item in ASSISTANTS
-            ]
+    existing_assistants = {
+        assistant.slug: assistant
+        for assistant in await db.scalars(
+            select(Assistant).where(Assistant.visibility == Visibility.SYSTEM)
         )
-    if await db.scalar(select(ToolDefinition.id).limit(1)) is None:
-        db.add_all(
-            [
-                ToolDefinition(
-                    name=name,
-                    slug=slug,
-                    description=description,
-                    icon=icon,
-                    category=category,
-                    access_type=access_type,
-                    external_url=url,
-                    rating=rating,
-                    config_schema={},
-                )
-                for name, slug, description, icon, category, url, rating, access_type in TOOLS
-            ]
-        )
-    if await db.scalar(select(TaskTemplate.id).limit(1)) is None:
-        db.add_all(
-            [
-                TaskTemplate(
-                    title=title,
-                    description=description,
-                    icon=icon,
-                    prompt_template=prompt,
-                    category=category,
-                )
-                for title, description, icon, prompt, category in TASK_TEMPLATES
-            ]
-        )
+    }
+    for item in ASSISTANTS:
+        existing = existing_assistants.get(item["slug"])
+        if existing and not existing.opening_message:
+            existing.opening_message = item["opening_message"]
+    db.add_all(
+        [
+            Assistant(
+                owner_id=None,
+                visibility=Visibility.SYSTEM,
+                model_config={},
+                **item,
+            )
+            for item in ASSISTANTS
+            if item["slug"] not in existing_assistants
+        ]
+    )
+    tool_slugs = set(await db.scalars(select(ToolDefinition.slug)))
+    db.add_all(
+        [
+            ToolDefinition(
+                name=name,
+                slug=slug,
+                description=description,
+                icon=icon,
+                category=category,
+                access_type=access_type,
+                external_url=url,
+                rating=rating,
+                config_schema={},
+            )
+            for name, slug, description, icon, category, url, rating, access_type in TOOLS
+            if slug not in tool_slugs
+        ]
+    )
+    template_titles = set(await db.scalars(select(TaskTemplate.title)))
+    db.add_all(
+        [
+            TaskTemplate(
+                title=title,
+                description=description,
+                icon=icon,
+                prompt_template=prompt,
+                category=category,
+            )
+            for title, description, icon, prompt, category in TASK_TEMPLATES
+            if title not in template_titles
+        ]
+    )
     if await db.scalar(select(Resource.id).limit(1)) is None:
         db.add_all(
             [

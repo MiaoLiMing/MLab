@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Response, status
@@ -69,9 +69,27 @@ async def update_document(
     if document is None:
         raise NotFoundError("文稿")
     changes = payload.model_dump(exclude_unset=True)
+    force_version = bool(changes.pop("create_version", False))
     for field, value in changes.items():
         setattr(document, field, value)
     if "content_json" in changes or "content_text" in changes:
+        last_version = await db.scalar(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == document.id)
+            .order_by(DocumentVersion.version.desc())
+            .limit(1)
+        )
+        last_created_at = last_version.created_at if last_version else None
+        if last_created_at and last_created_at.tzinfo is None:
+            last_created_at = last_created_at.replace(tzinfo=UTC)
+        should_snapshot = (
+            force_version
+            or not last_created_at
+            or (datetime.now(UTC) - last_created_at >= timedelta(minutes=5))
+        )
+    else:
+        should_snapshot = False
+    if should_snapshot:
         document.current_version += 1
         db.add(
             DocumentVersion(

@@ -88,7 +88,7 @@ function removeAttachment(id: string) {
       v-model="text"
       rows="3"
       maxlength="100000"
-      placeholder="从任何想法开始… 按 Enter 发送，Shift Enter 换行"
+      placeholder="从任何想法开始…"
       @keydown="onKeydown"
     />
     <div class="composer__toolbar">

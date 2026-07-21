@@ -1,58 +1,16 @@
-import ast
-import math
-import operator
-from datetime import datetime
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter
 from sqlalchemy import or_, select
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.errors import AppError, NotFoundError
-from app.models.entities import Conversation, Message, ToolDefinition, ToolExecution, ToolFavorite
+from app.models.entities import Conversation, Message, ToolDefinition, ToolFavorite
 from app.schemas.common import MessageResponse
 from app.schemas.content import ToolExecuteRequest, ToolExecuteResponse, ToolResponse
+from app.services.tools import record_tool_execution, run_builtin_tool
 
 router = APIRouter(prefix="/tools", tags=["tools"])
-
-OPERATORS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.FloorDiv: operator.floordiv,
-    ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
-}
-
-
-def evaluate_expression(expression: str) -> int | float:
-    if not expression or len(expression) > 200:
-        raise AppError("INVALID_EXPRESSION", "请输入长度不超过 200 的算式", 422)
-
-    def evaluate(node: ast.AST) -> int | float:
-        if isinstance(node, ast.Expression):
-            return evaluate(node.body)
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-            return node.value
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-            value = evaluate(node.operand)
-            return value if isinstance(node.op, ast.UAdd) else -value
-        if isinstance(node, ast.BinOp) and type(node.op) in OPERATORS:
-            left, right = evaluate(node.left), evaluate(node.right)
-            if isinstance(node.op, ast.Pow) and abs(right) > 10:
-                raise AppError("EXPRESSION_TOO_COMPLEX", "指数绝对值不能超过 10", 422)
-            return OPERATORS[type(node.op)](left, right)
-        raise AppError("INVALID_EXPRESSION", "算式包含不支持的内容", 422)
-
-    try:
-        result = evaluate(ast.parse(expression, mode="eval"))
-    except (SyntaxError, ZeroDivisionError, OverflowError) as exc:
-        raise AppError("INVALID_EXPRESSION", "无法计算该算式", 422) from exc
-    if not math.isfinite(float(result)) or abs(float(result)) > 1e100:
-        raise AppError("EXPRESSION_TOO_LARGE", "计算结果超出允许范围", 422)
-    return result
 
 
 @router.get("", response_model=list[ToolResponse])
@@ -118,32 +76,15 @@ async def execute_tool(
         if owned_message is None:
             raise AppError("INVALID_MESSAGE", "消息不可用", 422)
 
-    if tool.slug == "calculator":
-        expression = str(payload.input.get("expression") or "")
-        output = {"expression": expression, "result": evaluate_expression(expression)}
-    elif tool.slug == "current-time":
-        timezone = str(payload.input.get("timezone") or "Asia/Shanghai")
-        try:
-            now = datetime.now(ZoneInfo(timezone))
-        except ZoneInfoNotFoundError as exc:
-            raise AppError("INVALID_TIMEZONE", "时区名称无效", 422) from exc
-        output = {
-            "timezone": timezone,
-            "iso": now.isoformat(),
-            "display": now.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-    else:
-        raise AppError("TOOL_NOT_IMPLEMENTED", "该工具暂未配置执行器", 422)
-
-    execution = ToolExecution(
-        user_id=user.id,
-        tool_id=tool.id,
-        message_id=payload.message_id,
-        input_data=payload.input,
-        output_data=output,
-        status="completed",
+    output = run_builtin_tool(tool, payload.input)
+    execution = await record_tool_execution(
+        db,
+        user.id,
+        tool,
+        payload.input,
+        output,
+        payload.message_id,
     )
-    db.add(execution)
     await db.commit()
     await db.refresh(execution)
     return ToolExecuteResponse(execution_id=execution.id, output=output)

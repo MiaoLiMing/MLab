@@ -9,6 +9,8 @@ __pycache__/
 htmlcov/
 backend/data/
 backend/uploads/
+data/
+uploads/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
@@ -17,4 +19,3 @@ test-results/
 .idea/
 .vscode/
 *.log
-

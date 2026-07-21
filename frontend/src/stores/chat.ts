@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { API_BASE, api, authHeaders } from '@/api/client'
+import { api, authenticatedFetch } from '@/api/client'
 import { readSSE } from '@/api/sse'
 import type { ChatMessage, Conversation, ConversationDetail } from '@/types/api'
 
@@ -33,10 +33,21 @@ export const useChatStore = defineStore('chat', () => {
     current.value = await api<ConversationDetail>(`/conversations/${id}`)
   }
 
-  async function send(content: string, modelConfigId?: string, attachmentIds: string[] = []) {
+  async function send(
+    content: string,
+    modelConfigId?: string,
+    attachmentIds: string[] = [],
+    sourceMessageId?: string,
+  ) {
     if (!current.value || streaming.value) return
     const conversationId = current.value.id
-    const optimisticUser: ChatMessage = {
+    const sourceIndex = sourceMessageId
+      ? current.value.messages.findIndex(
+          (message) => message.id === sourceMessageId && message.role === 'user',
+        )
+      : -1
+    const existingSource = sourceIndex >= 0 ? current.value.messages[sourceIndex] : undefined
+    const optimisticUser: ChatMessage = existingSource || {
       id: crypto.randomUUID(),
       conversation_id: conversationId,
       parent_id: null,
@@ -49,27 +60,43 @@ export const useChatStore = defineStore('chat', () => {
       error_code: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      attachments: [],
+      attachments: attachmentIds.map((fileId) => ({
+        id: `pending-${fileId}`,
+        file_id: fileId,
+        attachment_type: 'file',
+        attachment_metadata: {},
+      })),
     }
-    current.value.messages.push(optimisticUser)
+    optimisticUser.content = content
+    if (attachmentIds.length) {
+      optimisticUser.attachments = attachmentIds.map((fileId) => ({
+        id: `pending-${fileId}`,
+        file_id: fileId,
+        attachment_type: 'file',
+        attachment_metadata: {},
+      }))
+    }
+    if (existingSource) current.value.messages.splice(sourceIndex + 1)
+    else current.value.messages.push(optimisticUser)
     const optimisticAssistant: ChatMessage = {
       ...optimisticUser,
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
       status: 'streaming',
+      attachments: [],
     }
     current.value.messages.push(optimisticAssistant)
     streaming.value = true
     abortController.value = new AbortController()
     try {
-      const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, {
+      const response = await authenticatedFetch(`/conversations/${conversationId}/messages`, {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({
           content,
           model_config_id: modelConfigId || null,
           attachment_ids: attachmentIds,
+          source_message_id: sourceMessageId || null,
         }),
         signal: abortController.value.signal,
       })
@@ -85,6 +112,11 @@ export const useChatStore = defineStore('chat', () => {
           optimisticAssistant.content += String(event.data.content || '')
         } else if (event.event === 'message.done') {
           optimisticAssistant.status = String(event.data.status) as ChatMessage['status']
+          optimisticAssistant.tool_status = undefined
+        } else if (event.event === 'tool.call') {
+          optimisticAssistant.tool_status = `正在使用 ${String(event.data.name || '工具')}`
+        } else if (event.event === 'tool.result') {
+          optimisticAssistant.tool_status = '工具执行完成，正在整理结果'
         } else if (event.event === 'error') {
           optimisticAssistant.status = 'failed'
           optimisticAssistant.error_code = String(event.data.code || 'MODEL_ERROR')
@@ -93,6 +125,15 @@ export const useChatStore = defineStore('chat', () => {
       }
       await loadConversation(conversationId)
       await loadConversations()
+    } catch (error) {
+      if (abortController.value?.signal.aborted) {
+        optimisticAssistant.status = 'stopped'
+        return
+      }
+      optimisticAssistant.status = 'failed'
+      optimisticAssistant.error_code =
+        error instanceof Error && error.name ? error.name : 'REQUEST_FAILED'
+      throw error
     } finally {
       streaming.value = false
       activeMessageId.value = null
@@ -101,10 +142,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function stop() {
-    if (activeMessageId.value) {
-      await api(`/conversations/messages/${activeMessageId.value}/stop`, { method: 'POST' })
-    }
     abortController.value?.abort()
+    if (activeMessageId.value) {
+      await api(`/conversations/messages/${activeMessageId.value}/stop`, { method: 'POST' }).catch(
+        () => undefined,
+      )
+    }
     streaming.value = false
   }
 

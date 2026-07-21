@@ -49,3 +49,11 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     access_expires_at: datetime
     user: UserResponse
+
+
+class UsageSummary(BaseModel):
+    conversations: int
+    tasks: int
+    documents: int
+    input_tokens: int
+    output_tokens: int
