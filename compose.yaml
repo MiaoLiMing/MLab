@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mlab
+      POSTGRES_USER: mlab
+      POSTGRES_PASSWORD: mlab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlab -d mlab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this-before-public-deployment}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      DATABASE_URL: postgresql+asyncpg://mlab:mlab@postgres:5432/mlab
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DEFAULT_AI_PROVIDER: ${DEFAULT_AI_PROVIDER:-deepseek}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-deepseek-chat}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
+      AI_API_KEY: ${AI_API_KEY:-}
+      LOCAL_STORAGE_PATH: /data/uploads
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    command: arq app.worker.WorkerSettings
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-this-before-public-deployment}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      DATABASE_URL: postgresql+asyncpg://mlab:mlab@postgres:5432/mlab
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
