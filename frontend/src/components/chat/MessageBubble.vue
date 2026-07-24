@@ -48,7 +48,12 @@ const md = new MarkdownIt({
     return `<pre class="hljs"><code>${hljs.highlightAuto(source).value}</code></pre>`
   },
 })
-const rendered = computed(() => DOMPurify.sanitize(md.render(props.message.content)))
+const rendered = computed(() =>
+  DOMPurify.sanitize(md.render(props.message.content), {
+    ADD_TAGS: ['pre'],
+    ADD_ATTR: ['class'],
+  }),
+)
 
 async function copy() {
   await navigator.clipboard.writeText(props.message.content)

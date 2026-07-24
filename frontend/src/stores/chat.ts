@@ -33,6 +33,31 @@ export const useChatStore = defineStore('chat', () => {
     current.value = await api<ConversationDetail>(`/conversations/${id}`)
   }
 
+  async function updateConversation(
+    id: string,
+    payload: { title?: string; archived?: boolean },
+  ) {
+    const updated = await api<Conversation>(`/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    if (payload.archived) {
+      conversations.value = conversations.value.filter((item) => item.id !== id)
+      if (current.value?.id === id) current.value = null
+      return updated
+    }
+    const index = conversations.value.findIndex((item) => item.id === id)
+    if (index >= 0) conversations.value[index] = updated
+    if (current.value?.id === id) current.value = { ...current.value, ...updated }
+    return updated
+  }
+
+  async function deleteConversation(id: string) {
+    await api(`/conversations/${id}`, { method: 'DELETE' })
+    conversations.value = conversations.value.filter((item) => item.id !== id)
+    if (current.value?.id === id) current.value = null
+  }
+
   async function send(
     content: string,
     modelConfigId?: string,
@@ -159,6 +184,8 @@ export const useChatStore = defineStore('chat', () => {
     loadConversations,
     createConversation,
     loadConversation,
+    updateConversation,
+    deleteConversation,
     send,
     stop,
   }

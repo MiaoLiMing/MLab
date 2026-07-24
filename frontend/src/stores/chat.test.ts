@@ -78,4 +78,45 @@ describe('chat store', () => {
     expect(store.current?.messages.map((item) => item.content)).toEqual(['新问题', '新回答'])
     expect(store.streaming).toBe(false)
   })
+
+  it('重命名会话后同步列表与当前会话', async () => {
+    const store = useChatStore()
+    const current = conversation([])
+    store.current = current
+    store.conversations = [{ ...current }]
+    vi.mocked(api).mockResolvedValue({ ...current, title: '新的会话名称' } as never)
+
+    await store.updateConversation(current.id, { title: '新的会话名称' })
+
+    expect(api).toHaveBeenCalledWith(`/conversations/${current.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '新的会话名称' }),
+    })
+    expect(store.current?.title).toBe('新的会话名称')
+    expect(store.conversations[0]?.title).toBe('新的会话名称')
+  })
+
+  it('归档或删除当前会话后从侧栏与当前状态中移除', async () => {
+    const store = useChatStore()
+    const archived = conversation([])
+    store.current = archived
+    store.conversations = [{ ...archived }]
+    vi.mocked(api).mockResolvedValue({ ...archived, archived_at: '2026-01-02T00:00:00Z' } as never)
+
+    await store.updateConversation(archived.id, { archived: true })
+
+    expect(store.conversations).toEqual([])
+    expect(store.current).toBeNull()
+
+    const deleted = conversation([])
+    store.current = deleted
+    store.conversations = [{ ...deleted }]
+    vi.mocked(api).mockResolvedValue(undefined as never)
+
+    await store.deleteConversation(deleted.id)
+
+    expect(api).toHaveBeenLastCalledWith(`/conversations/${deleted.id}`, { method: 'DELETE' })
+    expect(store.conversations).toEqual([])
+    expect(store.current).toBeNull()
+  })
 })

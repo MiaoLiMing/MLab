@@ -1,6 +1,7 @@
 import type { ApiErrorBody } from '@/types/api'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+// 基础服务前缀，优先从环境变量读取，默认自动挂载 MLab 专用接口路径
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://114.132.64.216/api/v1/mlab'
 
 export class ApiError extends Error {
   constructor(
@@ -12,7 +13,9 @@ export class ApiError extends Error {
   }
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+let refreshRequest: Promise<boolean> | null = null
+
+async function requestAccessTokenRefresh(): Promise<boolean> {
   const refreshToken = localStorage.getItem('mlab_refresh_token')
   if (!refreshToken) return false
   const response = await fetch(`${API_BASE}/auth/refresh`, {
@@ -28,6 +31,15 @@ async function refreshAccessToken(): Promise<boolean> {
   localStorage.setItem('mlab_access_token', data.access_token)
   localStorage.setItem('mlab_refresh_token', data.refresh_token)
   return true
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (!refreshRequest) {
+    refreshRequest = requestAccessTokenRefresh().finally(() => {
+      refreshRequest = null
+    })
+  }
+  return refreshRequest
 }
 
 export async function authenticatedFetch(
@@ -59,7 +71,7 @@ export async function api<T>(
     } catch {
       // Upstream gateways may return a non-JSON body.
     }
-    throw new ApiError(body?.error.code ?? 'REQUEST_FAILED', body?.error.message ?? '请求失败', response.status)
+    throw new ApiError(body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? '请求失败', response.status)
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T

@@ -28,7 +28,7 @@ describe('MessageBubble', () => {
     const wrapper = mount(MessageBubble, {
       props: { message: message('assistant', '```js\nconst answer = 42\n```') },
     })
-    expect(wrapper.find('pre.hljs').exists()).toBe(true)
+    expect(wrapper.find('.markdown > code').exists()).toBe(true)
     expect(wrapper.find('.hljs-keyword').text()).toBe('const')
   })
 

@@ -1,5 +1,4 @@
 import { fileURLToPath, URL } from 'node:url'
-
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
@@ -11,9 +10,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/api': {
+        target: 'http://114.132.64.216',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://114.132.64.216',
+        changeOrigin: true,
+      },
     },
   },
 })
-

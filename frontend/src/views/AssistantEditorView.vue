@@ -71,6 +71,7 @@ async function save() {
       method: editing.value ? 'PATCH' : 'POST',
       body: JSON.stringify(payload),
     })
+    window.dispatchEvent(new CustomEvent('mlab:assistants-changed'))
     toast.show(editing.value ? '助手已更新' : '助手已创建', 'success')
     await router.push('/assistants')
   } catch (error) {

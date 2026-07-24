@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowUp, FileText, LoaderCircle, Paperclip, Square, WandSparkles, X } from 'lucide-vue-next'
+import { ArrowUp, FileText, LoaderCircle, Paperclip, Square, X } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, ref } from 'vue'
 
 import { api } from '@/api/client'
@@ -93,7 +93,6 @@ function removeAttachment(id: string) {
     />
     <div class="composer__toolbar">
       <div class="composer__actions">
-        <button class="chip" title="选择能力"><WandSparkles :size="16" /> 智能</button>
         <input
           ref="fileInput"
           class="visually-hidden"
@@ -102,9 +101,10 @@ function removeAttachment(id: string) {
           accept=".txt,.md,.json,.pdf,.png,.jpg,.jpeg,.webp"
           @change="uploadFiles"
         />
-        <button class="icon-button" title="添加附件" :disabled="uploading" @click="fileInput?.click()">
+        <button class="chip" title="添加附件" :disabled="uploading" @click="fileInput?.click()">
           <LoaderCircle v-if="uploading" class="spin" :size="18" />
           <Paperclip v-else :size="18" />
+          {{ uploading ? '上传中' : '附件' }}
         </button>
       </div>
       <div class="composer__submit">
